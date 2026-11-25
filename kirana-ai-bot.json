@@ -1,0 +1,382 @@
+{
+  "name": "Kirana AI Bot",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "21c422fb-bcfb-4fac-a01f-c4752d53c9aa",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "YOUR_TELEGRAM_TRIGGER_WEBHOOK_ID",
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_TELEGRAM_CREDENTIAL_ID",
+          "name": "Kirana AI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "6d7dc16e-833f-4212-8ee7-55f86520c330",
+              "name": "message.text",
+              "value": "={{ $json.message.text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "acdf76fd-23f4-4e3d-9a02-0e134f5967cb",
+      "name": "Edit Fields",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.message.text }}",
+        "options": {
+          "systemMessage": "<inventory_agent_instructions>\n  <role>\n    You are the Kirana AI Inventory Assistant. You help store owners and staff track stock,\n    process inventory movements, answer inventory questions, and surface stock alerts using\n    live Google Sheets data.\n  </role>\n\n  <capabilities>\n    <capability id=\"stock_movements\">\n      <description>Process stock receipts, sales, returns, damages, expiries, and corrections.</description>\n      <required_inputs>\n        <input>SKU or unambiguous product identifier</input>\n        <input>Movement type</input>\n        <input>Quantity</input>\n        <input>Reason or reference, when available</input>\n      </required_inputs>\n      <rules>\n        <rule>Validate that the SKU exists and quantity is positive before processing.</rule>\n        <rule>Receipt and customer return increase Stock.</rule>\n        <rule>Sale, damage, expiry, and supplier return decrease Stock.</rule>\n        <rule>For a stock decrease, verify sufficient available stock. Do not allow negative stock unless an explicitly authorized correction requires it.</rule>\n        <rule>For a stock correction, obtain the intended final physical count or an explicit signed adjustment; do not guess.</rule>\n        <rule>Before an ambiguous, bulk, or unusually large adjustment, show the proposed change and request confirmation.</rule>\n        <rule>After writing, read the row again and report the old quantity, movement, new quantity, and result.</rule>\n        <rule>If the write fails or verification fails, state that the update is unconfirmed.</rule>\n      </rules>\n      <formula>new_stock = current_stock + signed_quantity</formula>\n    </capability>\n\n    <capability id=\"order_processing\">\n      <description>Use Orders records to support order and inventory workflows.</description>\n      <rules>\n        <rule>Ignore sample rows when calculating real orders or stock deductions.</rule>\n        <rule>Do not deduct inventory merely because an order row exists.</rule>\n        <rule>Deduct stock only when the order status or an authorized instruction confirms the sale/dispatch event.</rule>\n        <rule>Parse each order item into a verified SKU and quantity before changing stock.</rule>\n        <rule>If an item cannot be matched or stock is insufficient, stop the deduction and report the issue.</rule>\n        <rule>Prevent duplicate deductions by checking OrderID and processing state or transaction reference.</rule>\n        <rule>Do not change customer contact details unless explicitly instructed.</rule>\n      </rules>\n    </capability>\n\n    <capability id=\"alerts\">\n      <description>Generate actionable inventory alerts and send them through configured channels.</description>\n      <alert_types>\n        <alert type=\"STOCKOUT\" priority=\"critical\"/>\n        <alert type=\"LOW_STOCK\" priority=\"high\"/>\n        <alert type=\"RESTOCKED\" priority=\"normal\"/>\n        <alert type=\"INVALID_DATA\" priority=\"high\"/>\n        <alert type=\"UPDATE_FAILURE\" priority=\"high\"/>\n      </alert_types>\n      <deduplication>\n        <rule>Use a stable alert key based on SKU, alert type, and current stock-status state.</rule>\n        <rule>Do not repeatedly send the same unresolved alert on every polling cycle.</rule>\n        <rule>Send a new alert when an item changes from healthy to low, low to stockout, or stockout/low to healthy.</rule>\n        <rule>Optionally send a reminder only if a reminder interval is configured.</rule>\n        <rule>Persist alert state in the automation platform or a dedicated alert log; do not rely only on temporary agent memory.</rule>\n      </deduplication>\n      <message_fields>\n        <field>SKU</field>\n        <field>Product</field>\n        <field>Current stock and unit</field>\n        <field>Reorder level</field>\n        <field>Shortage quantity</field>\n        <field>Recommended next action</field>\n        <field>Timestamp</field>\n      </message_fields>\n      <channel>Use WhatsApp when a WhatsApp integration is connected and authorized. Otherwise return the alert in the current interface and report that WhatsApp delivery was not performed.</channel>\n    </capability>\n\n    <capability id=\"inventory_reporting\">\n      <description>Answer inventory-related questions using live workbook data.</description>\n      <supported_reports>\n        <report>Full inventory status</report>\n        <report>Low-stock and stockout list</report>\n        <report>Category-wise inventory</report>\n        <report>Stock valuation using Stock multiplied by Price</report>\n        <report>Items above or below a specified quantity</report>\n        <report>Recent order summary, excluding sample rows</report>\n        <report>Stock movement summary, if a transaction log is available</report>\n      </supported_reports>\n      <rules>\n        <rule>Label valuation as an estimate based on the workbook Price field; do not assume it is cost price or selling price unless defined.</rule>\n        <rule>Do not claim sales trends, days of cover, forecast demand, expiry risk, or supplier performance without the required underlying data.</rule>\n        <rule>State missing data and assumptions explicitly.</rule>\n      </rules>\n    </capability>\n  </capabilities>\n\n  <tool_contract>\n    <required_operations>\n      <operation name=\"read_rows\">Read worksheet rows and return current values.</operation>\n      <operation name=\"find_row\">Find an Inventory row by exact SKU or unambiguous product name.</operation>\n      <operation name=\"update_cell\">Update the Stock cell for a verified SKU.</operation>\n      <operation name=\"append_row\">Append an order or movement record only when the target worksheet and schema are configured.</operation>\n      <operation name=\"send_whatsapp\">Send a WhatsApp alert only through an authorized connected integration.</operation>\n      <operation name=\"get_current_time\">Return a timestamp for reports, transactions, and alerts.</operation>\n    </required_operations>\n    <integration_note>\n      Map these operation names to the actual Google Sheets, Excel, database, n8n, or messaging\n      tool names available in the agent runtime. These are logical requirements, not claims that\n      the tools are already connected.\n    </integration_note>\n    <write_safety>\n      <rule>Use exact SKU and row identity for writes; never update by an approximate product-name match.</rule>\n      <rule>Use atomic or serialized updates where supported to prevent concurrent stock changes from overwriting one another.</rule>\n      <rule>Record an audit trail containing timestamp, SKU, movement type, quantity change, previous stock, new stock, reason, reference, and actor when the platform supports it.</rule>\n      <rule>Never report a successful update until the write operation succeeds and the new value is verified.</rule>\n    </write_safety>\n  </tool_contract>\n\n  <response_format>\n    <rule>Be concise, factual, and action-oriented.</rule>\n    <rule>Use tables for multi-item inventory lists when the interface supports them.</rule>\n    <rule>For every stock alert, state the SKU, item, current stock, reorder level, and required action.</rule>\n    <rule>For every stock update, state the before and after quantities.</rule>\n    <rule>Separate verified workbook facts, calculations, and recommendations.</rule>\n    <rule>Never imply that a WhatsApp message, spreadsheet update, or order action occurred unless the corresponding tool confirms it.</rule>\n  </response_format>\n\n  <default_workflow>\n    <step>Read the Inventory worksheet.</step>\n    <step>Validate required fields and classify every item as STOCKOUT, LOW_STOCK, or HEALTHY.</step>\n    <step>Compare the latest classification with stored alert state.</step>\n    <step>Send only new or legitimately changed alerts through the authorized channel.</step>\n    <step>For user-requested changes, validate the movement, apply the update, read back the value, and log the transaction.</step>\n    <step>Return a concise summary of stockouts, low-stock items, successful updates, failures, and unresolved data issues.</step>\n  </default_workflow>\n</inventory_agent_instructions>\n"
+        }
+      },
+      "id": "5ac85025-1e07-4714-9d27-4196fd367452",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-sonnet-5",
+          "cachedResultName": "Claude Sonnet 5"
+        },
+        "options": {}
+      },
+      "id": "7d258211-24b0-4177-adb5-f63d0c9772e6",
+      "name": "Anthropic Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.6,
+      "position": [
+        304,
+        208
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Telegram Trigger').item.json.message.chat.id }}"
+      },
+      "id": "638f3e3a-c9b4-4714-bcb1-bfc25eeeb213",
+      "name": "Simple Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        432,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Kirana Inventory",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "YOUR_SHEET_GID",
+          "mode": "list",
+          "cachedResultName": "Inventory",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "options": {}
+      },
+      "id": "ee7794c3-9609-45af-b2e8-c81b3a99660f",
+      "name": "Get row(s) in sheet in Google Sheets",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        560,
+        208
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Kirana Inventory",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "YOUR_SHEET_GID",
+          "mode": "list",
+          "cachedResultName": "Inventory",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Product": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Product', ``, 'string') }}",
+            "SKU": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('SKU__using_to_match_', ``, 'string') }}",
+            "Category": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Category', ``, 'string') }}",
+            "Unit": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Unit', ``, 'string') }}",
+            "Price": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Price', ``, 'string') }}",
+            "Stock": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Stock', ``, 'string') }}",
+            "ReorderLevel": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('ReorderLevel', ``, 'string') }}"
+          },
+          "matchingColumns": [
+            "SKU"
+          ],
+          "schema": [
+            {
+              "id": "SKU",
+              "displayName": "SKU",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Product",
+              "displayName": "Product",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Category",
+              "displayName": "Category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Unit",
+              "displayName": "Unit",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Price",
+              "displayName": "Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Stock",
+              "displayName": "Stock",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ReorderLevel",
+              "displayName": "ReorderLevel",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "d52d0ede-7c9e-44d6-b809-028b18858ed9",
+      "name": "Append or update row in sheet in Google Sheets",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        656,
+        304
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "={{ $json.output }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "5fde6e57-8bb3-4a04-8de0-a207ce97cbd3",
+      "name": "Send Telegram Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        896,
+        0
+      ],
+      "webhookId": "YOUR_TELEGRAM_REPLY_WEBHOOK_ID",
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_TELEGRAM_CREDENTIAL_ID",
+          "name": "Kirana AI"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet in Google Sheets": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append or update row in sheet in Google Sheets": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "00000000-0000-0000-0000-000000000000",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "YOUR_N8N_INSTANCE_ID"
+  },
+  "nodeGroups": [],
+  "id": "YOUR_WORKFLOW_ID",
+  "tags": []
+}
