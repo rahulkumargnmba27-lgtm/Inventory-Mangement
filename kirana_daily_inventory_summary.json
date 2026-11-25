@@ -1,0 +1,52 @@
+{
+  "name": "Kirana Quick - Daily 9 PM IST Inventory Summary",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 21 * * *"
+            }
+          ]
+        }
+      },
+      "id": "cron-daily-9pm",
+      "name": "Daily 9:00 PM IST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.KIRANA_API_BASE_URL || 'http://localhost:8000'}}/api/automation/daily-summary",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-n8n-secret",
+              "value": "={{$env.N8N_WEBHOOK_SECRET || 'kirana-n8n-shared-secret'}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-daily-summary",
+      "name": "Generate & Dispatch Daily Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300]
+    }
+  ],
+  "connections": {
+    "Daily 9:00 PM IST": {
+      "main": [[{"node": "Generate & Dispatch Daily Summary", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "timezone": "Asia/Kolkata"
+  }
+}

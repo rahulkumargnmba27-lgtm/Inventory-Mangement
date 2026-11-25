@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <rect width="200" height="200" rx="24" fill="#fef9c3" fill-opacity="0.55"/>
+  
+        <rect x="48" y="42" width="104" height="118" rx="14" fill="#ffffff" stroke="#eab308" stroke-width="5"/>
+        <rect x="48" y="42" width="104" height="28" rx="10" fill="#eab308"/>
+        <rect x="58" y="80" width="84" height="58" rx="10" fill="#fef9c3"/>
+        
+  <text x="100" y="102" text-anchor="middle" font-size="36" dominant-baseline="middle">🧈</text>
+  <rect x="28" y="158" width="144" height="30" rx="10" fill="#eab308"/>
+  <text x="100" y="171" text-anchor="middle" fill="#ffffff" font-family="Plus Jakarta Sans, Arial, sans-serif" font-size="11" font-weight="800">Amul</text>
+  <text x="100" y="183" text-anchor="middle" fill="#ffffff" fill-opacity="0.92" font-family="Plus Jakarta Sans, Arial, sans-serif" font-size="9" font-weight="600">Butter 100g</text>
+</svg>

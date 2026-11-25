@@ -1,0 +1,118 @@
+{
+  "name": "Kirana Quick - 15-Min Inventory & WhatsApp Alert Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "schedule-15m",
+      "name": "Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.KIRANA_API_BASE_URL || 'http://localhost:8000'}}/api/automation/check-alerts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-n8n-secret",
+              "value": "={{$env.N8N_WEBHOOK_SECRET || 'kirana-n8n-shared-secret'}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-check-alerts",
+      "name": "Run Deduplicated Stock Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json.new_alerts_created}}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "if-new-alerts",
+      "name": "New Unresolved Alerts?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "new_alerts",
+        "options": {}
+      },
+      "id": "split-alerts",
+      "name": "Split Alert Items",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [940, 220]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v20.0/{{$env.WHATSAPP_PHONE_NUMBER_ID}}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.WHATSAPP_ACCESS_TOKEN}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{$env.WHATSAPP_RECIPIENT_PHONE}}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": \"{{$json.message_payload}}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "whatsapp-cloud-send",
+      "name": "Send WhatsApp Cloud Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1180, 220]
+    }
+  ],
+  "connections": {
+    "Every 15 Minutes": {
+      "main": [[{"node": "Run Deduplicated Stock Check", "type": "main", "index": 0}]]
+    },
+    "Run Deduplicated Stock Check": {
+      "main": [[{"node": "New Unresolved Alerts?", "type": "main", "index": 0}]]
+    },
+    "New Unresolved Alerts?": {
+      "main": [[{"node": "Split Alert Items", "type": "main", "index": 0}], []]
+    },
+    "Split Alert Items": {
+      "main": [[{"node": "Send WhatsApp Cloud Alert", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "timezone": "Asia/Kolkata"
+  }
+}

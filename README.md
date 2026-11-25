@@ -1,119 +1,78 @@
-<p align="center">
-  <img src="assets/banner.png" alt="Kirana AI Bot Banner" width="100%" />
-</p>
+# Gupta Brothers Kirana — AI-Powered Inventory Management System
 
-# Kirana AI Bot (n8n Workflow)
+A full-stack, production-ready AI inventory management application built for local Indian Kirana stores, following the **Kirana Quick** design system.
 
-An AI-powered Telegram inventory assistant (**[@Kirana_AI_bot](https://t.me/Kirana_AI_bot)**) for Kirana (neighborhood grocery) stores, built with **n8n**, **Claude Sonnet 5 (Anthropic)**, and **Google Sheets**.
+## Architecture & Stack
+- **Frontend**: React 19 + Vite + Tailwind CSS v4 (`Plus Jakarta Sans`, Material Symbols Outlined, INR `₹` formatting, Indian date/time `Asia/Kolkata`, responsive desktop sidebar + mobile bottom bar).
+- **Backend**: Python FastAPI + SQLAlchemy 2.0 + Pydantic v2 + JWT Auth + RBAC (`owner`, `manager`, `staff`).
+- **Database**: Supabase PostgreSQL (`database/schema.sql`, `database/migrations/001_initial_schema.sql`) with automatic local SQLite (`kirana.db`) fallback for zero-config development.
+- **AI Assistant**: Google Gemini API (`google-genai`) with verified live database function calling + mandatory confirmation before stock mutations.
+- **Automation & Alerts**: n8n workflows (`n8n/kirana_15min_inventory_monitor.json`, `n8n/kirana_daily_inventory_summary.json`) + Meta WhatsApp Cloud API with alert deduplication.
 
-Store owners and staff can message [@Kirana_AI_bot](https://t.me/Kirana_AI_bot) on Telegram in natural language to check stock levels, record receipts/sales/adjustments, view low-stock or stockout alerts, and generate category or valuation reports backed by a live Google Sheet.
+## Quick Start (Local Development)
 
----
-
-## Architecture
-
-```mermaid
-flowchart LR
-    A["Telegram Trigger<br/>(Incoming Message)"] --> B["Edit Fields<br/>(Extract message.text)"]
-    B --> C["AI Agent<br/>(LangChain Agent)"]
-    D["Anthropic Chat Model<br/>(Claude Sonnet 5)"] -.->|ai_languageModel| C
-    E["Simple Memory<br/>(Chat ID Session)"] -.->|ai_memory| C
-    F["Google Sheets Tool<br/>(Get row(s))"] -.->|ai_tool| C
-    G["Google Sheets Tool<br/>(Append or Update)"] -.->|ai_tool| C
-    C --> H["Send Telegram Reply<br/>(Output to Chat ID)"]
+### 1. Environment Configuration
+Copy `.env.example` to `backend/.env` and fill in your credentials (or run immediately with defaults for local SQLite + built-in seed data):
+```bash
+cp .env.example backend/.env
 ```
 
-### Workflow Nodes
+### 2. Backend Setup (FastAPI)
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+On first startup, the backend automatically:
+- Creates all database tables
+- Generates `data/kirana_initial_data.xlsx` with the 24 Kirana SKUs (`KIR001`–`KIR024`) and `SAMPLE-001` order
+- Imports both `Inventory` and `Orders` worksheets idempotently (marking `SAMPLE-001` as `is_sample=True` so it is excluded from sales totals)
+- Seeds demo accounts:
+  - **Owner**: `owner@kiranaquick.in` / `Kirana@123`
+  - **Staff**: `staff@kiranaquick.in` / `Staff@123`
 
-| Node | Type | Purpose |
-| :--- | :--- | :--- |
-| **Telegram Trigger** | `n8n-nodes-base.telegramTrigger` (v1.5) | Listens for incoming Telegram `message` updates. |
-| **Edit Fields** | `n8n-nodes-base.set` (v3.5) | Extracts `message.text` for the AI Agent. |
-| **AI Agent** | `@n8n/n8n-nodes-langchain.agent` (v3.1) | Interprets user intent, enforces inventory rules, and calls tools. |
-| **Anthropic Chat Model** | `@n8n/n8n-nodes-langchain.lmChatAnthropic` (v1.6) | Uses `claude-sonnet-5` (Claude Sonnet 5). |
-| **Simple Memory** | `@n8n/n8n-nodes-langchain.memoryBufferWindow` (v1.4) | Per-chat conversation memory keyed by `message.chat.id`. |
-| **Get row(s) in sheet in Google Sheets** | `n8n-nodes-base.googleSheetsTool` (v4.7) | Reads live rows from the `Inventory` worksheet. |
-| **Append or update row in sheet in Google Sheets** | `n8n-nodes-base.googleSheetsTool` (v4.7) | Updates or appends rows in the `Inventory` worksheet. |
-| **Send Telegram Reply** | `n8n-nodes-base.telegram` (v1.2) | Sends the agent's `$json.output` back to the user's Telegram chat. |
+### 3. Frontend Setup (React + Vite)
+```bash
+cd frontend
+npm install
+npm run dev
+```
+Open `http://localhost:5173`.
 
----
+## External Integrations Setup
 
-## Repository Structure
+### Supabase PostgreSQL
+1. Create a Supabase project.
+2. Run `database/schema.sql` in the **Supabase SQL Editor**.
+3. Set `DATABASE_URL` in `backend/.env` to your Supabase Transaction/Session Pooler PostgreSQL URI.
 
-```text
-Inventory-Management/
-├── assets/
-│   └── banner.png                       # Repository hero banner
-├── docs/
-│   └── system-prompt.xml                # Extracted AI Agent system prompt
-├── templates/
-│   └── kirana-inventory-template.csv    # Starter Google Sheet CSV template
-├── workflows/
-│   └── kirana-ai-bot.json               # Sanitized, import-ready n8n workflow
-├── .gitignore
-├── LICENSE
-└── README.md
+### Google Gemini API
+1. Obtain an API key from Google AI Studio.
+2. Set `GEMINI_API_KEY=<your-key>` and `GEMINI_MODEL=gemini-2.5-flash` in `backend/.env`.
+
+### WhatsApp Cloud API
+1. Create a Meta Developer App with the **WhatsApp** product enabled.
+2. Set `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, and `WHATSAPP_RECIPIENT_PHONE` (with country code, e.g. `919876543210`) in `backend/.env`.
+
+### Telegram Bot HTTP API
+1. Message `@BotFather` on Telegram and run `/newbot` to get your `TELEGRAM_BOT_TOKEN`.
+2. Set `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, and `TELEGRAM_WEBHOOK_SECRET` in `backend/.env`.
+3. Supported bot commands: `/stock <name or SKU>`, `/lowstock`, `/stockouts`, `/value`, `/orders`, `/add <qty> <SKU>`, `/deduct <qty> <SKU>` (with inline confirmation buttons).
+4. For production webhooks, point Telegram `setWebhook` to `https://<your-domain>/api/telegram/webhook` with `secret_token=$TELEGRAM_WEBHOOK_SECRET`. Locally, you can click **Poll Updates** in the Alerts tab.
+
+### n8n Automation
+1. Import `n8n/kirana_15min_inventory_monitor.json` and `n8n/kirana_daily_inventory_summary.json` into your n8n instance.
+2. Set `KIRANA_API_BASE_URL`, `N8N_WEBHOOK_SECRET`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, and `WHATSAPP_RECIPIENT_PHONE` in n8n environment variables.
+3. Activate both workflows.
+
+## Testing
+```bash
+cd backend
+.venv/bin/python -m pytest -v
 ```
 
----
-
-## Prerequisites
-
-- **n8n** (Cloud or self-hosted, supporting LangChain AI Agent nodes)
-- **Telegram Bot Token** (created via [@BotFather](https://t.me/BotFather))
-- **Anthropic API** access (or n8n AI Gateway) for Claude Sonnet 5
-- **Google Sheets** account with OAuth2 credentials configured in n8n
-
----
-
-## Setup Guide
-
-### 1. Create the Google Sheet
-
-1. Create a new Google Sheet named **Kirana Inventory**.
-2. Rename the first tab to **`Inventory`**.
-3. Import [`templates/kirana-inventory-template.csv`](templates/kirana-inventory-template.csv) or create the following header columns:
-
-| Column | Type | Description |
-| :--- | :--- | :--- |
-| `SKU` | String | Unique item identifier (e.g., `KIR-001`) |
-| `Product` | String | Product name (e.g., `Basmati Rice 5kg`) |
-| `Category` | String | Product category (e.g., `Grains & Staples`) |
-| `Unit` | String | Unit of measure (e.g., `bag`, `pack`, `bottle`) |
-| `Price` | Number | Unit price used for valuation estimates |
-| `Stock` | Number | Current available stock quantity |
-| `ReorderLevel` | Number | Minimum threshold before a `LOW_STOCK` alert is triggered |
-
-### 2. Import the n8n Workflow
-
-1. Open your n8n instance and click **Add workflow** → **Import from File**.
-2. Select [`workflows/kirana-ai-bot.json`](workflows/kirana-ai-bot.json).
-3. Configure credentials on the nodes:
-   - **Telegram Trigger** & **Send Telegram Reply**: Select your Telegram Bot API credential.
-   - **Anthropic Chat Model**: Connect your Anthropic API credential (or AI Gateway).
-   - **Get row(s) in sheet in Google Sheets** & **Append or update row in sheet in Google Sheets**: Select your Google Sheets OAuth2 credential and pick your **Kirana Inventory** document and **`Inventory`** sheet.
-4. Save and toggle the workflow **Active**.
-
----
-
-## Example Telegram Prompts
-
-- **Check Inventory:** `"Show me the full inventory status"` or `"Which items are low on stock or out of stock?"`
-- **Record a Sale:** `"Sold 3 bags of Basmati Rice 5kg (KIR-001)"`
-- **Record a Restock:** `"Received 20 packs of Amul Butter 500g (KIR-005)"`
-- **Valuation Estimate:** `"What is our total inventory valuation?"`
-- **Category Breakdown:** `"Show stock for Dairy"`
-
----
-
-## Notes
-
-- **Sanitized Export:** All personal credential IDs, Google Sheet IDs, webhook IDs, and n8n instance IDs have been replaced with safe placeholders in `workflows/kirana-ai-bot.json`.
-- **Complete System Prompt:** The `AI Agent` `systemMessage` in `workflows/kirana-ai-bot.json` and [`docs/system-prompt.xml`](docs/system-prompt.xml) includes the full `<inventory_agent_instructions>` XML structure.
-- **Exact SKU Matching:** The `Append or update row in sheet in Google Sheets` node is configured to match rows on `SKU` (`matchingColumns: ["SKU"]`), ensuring updates target exact SKUs without ambiguity.
-
----
-
-## License
-
-This project is licensed under the [MIT License](LICENSE).
+## Deployment
+- **Backend**: Deploy `backend/` to Render, Railway, Fly.io, or Cloud Run using `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
+- **Frontend**: Build `frontend/` (`npm run build`) and deploy `frontend/dist/` to Vercel, Netlify, or Cloudflare Pages, configuring `/api` proxy or `VITE_API_BASE_URL` to your backend URL.

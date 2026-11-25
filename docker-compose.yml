@@ -1,0 +1,26 @@
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.example
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///./kirana.db}
+    volumes:
+      - kirana_data:/app/backend/data
+
+  n8n:
+    image: n8nio/n8n:latest
+    ports:
+      - "5678:5678"
+    environment:
+      - GENERIC_TIMEZONE=Asia/Kolkata
+      - KIRANA_API_BASE_URL=http://web:8000
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n:/workflows:ro
+
+volumes:
+  kirana_data:
+  n8n_data:
